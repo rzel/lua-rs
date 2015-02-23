@@ -17,4 +17,3 @@ exclude = [".gitignore", ".travis.yml"]
 
 [lib]
 name = "lua_rs" # Use valid identifier for the crate name.
-path = "src/lib.rs"
