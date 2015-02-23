@@ -6,7 +6,7 @@
 [package]
 
 name = "lua-rs"
-version = "0.0.2"
+version = "0.0.3"
 authors = ["Ahmed Charles <acharles@outlook.com>"]
 description = "Lua port written in Rust."
 repository = "https://github.com/ahmedcharles/lua-rs"

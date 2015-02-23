@@ -11,7 +11,7 @@ Add this to your `Cargo.toml` (crates.io):
 
 ```toml
 [dependencies]
-lua-rs = "*"
+lua-rs = "0.0.3"
 ```
 
 or (git):
