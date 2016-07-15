@@ -1,6 +1,8 @@
-# Copyright (C) 2015 Ahmed Charles - acharles@outlook.com
+# Copyright (C) 2015-2016 Ahmed Charles - acharles@outlook.com
 # Distributed under the MIT License.
 #    (See accompanying file LICENSE.txt or copy at
 #          http://opensource.org/licenses/MIT)
 
+sudo: false
 language: rust
+cache: cargo
