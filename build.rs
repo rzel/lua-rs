@@ -16,13 +16,29 @@ fn os(cmd: &mut Command) -> &mut Command { cmd.arg("generic") }
 
 fn main() {
     let out_dir = std::env::var("OUT_DIR").unwrap();
+    let debug = std::env::var("PROFILE").unwrap() == "debug";
 
-    assert!(os(Command::new("make").arg("-C").arg("puc-lua")).status().unwrap().success());
+    if debug {
+        assert!(Command::new("cp").arg("puc-lua/src/tests/ltests/ltests.c")
+                                  .arg("puc-lua/src/tests/ltests/ltests.h")
+                                  .arg("puc-lua/src").status().unwrap().success());
+    }
+    let mut cmd = Command::new("make");
+    os(cmd.arg("-C").arg("puc-lua"));
+    if debug {
+        cmd.arg(r#"MYCFLAGS+=-DLUA_USER_H='"ltests.h"'"#).arg("MYOBJS=ltests.o");
+    }
+    assert!(cmd.status().unwrap().success());
     assert!(Command::new("cp").arg("puc-lua/src/liblua.a").arg(&out_dir).status().unwrap().success());
     assert!(Command::new("cp").arg("puc-lua/src/lua").arg(&out_dir).status().unwrap().success());
     assert!(Command::new("cp").arg("puc-lua/src/lua").arg("puc-lua/src/tests/lua").status().unwrap().success());
     assert!(Command::new("cp").arg("puc-lua/src/luac").arg(&out_dir).status().unwrap().success());
-    assert!(Command::new("make").arg("-C").arg("puc-lua").arg("clean").status().unwrap().success());
+    assert!(Command::new("make").arg("-C").arg("puc-lua").arg("clean")
+                                .arg("MYOBJS=ltests.o").status().unwrap().success());
+    if debug {
+        assert!(Command::new("rm").arg("puc-lua/src/ltests.c")
+                                  .arg("puc-lua/src/ltests.h").status().unwrap().success());
+    }
 
     println!("cargo:rustc-link-lib=static=lua");
     println!("cargo:rustc-link-search=native={}", out_dir);
