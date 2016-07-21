@@ -255,15 +255,11 @@ static int ipairsaux (lua_State *L) {
 ** (The given "table" may not be a table.)
 */
 static int luaB_ipairs (lua_State *L) {
-#if defined(LUA_COMPAT_IPAIRS)
-  return pairsmeta(L, "__ipairs", 1, ipairsaux);
-#else
   luaL_checkany(L, 1);
   lua_pushcfunction(L, ipairsaux);  /* iteration function */
   lua_pushvalue(L, 1);  /* state */
   lua_pushinteger(L, 0);  /* initial value */
   return 3;
-#endif
 }
 
 
@@ -459,9 +455,6 @@ static const luaL_Reg base_funcs[] = {
   {"ipairs", luaB_ipairs},
   {"loadfile", luaB_loadfile},
   {"load", luaB_load},
-#if defined(LUA_COMPAT_LOADSTRING)
-  {"loadstring", luaB_load},
-#endif
   {"next", luaB_next},
   {"pairs", luaB_pairs},
   {"pcall", luaB_pcall},

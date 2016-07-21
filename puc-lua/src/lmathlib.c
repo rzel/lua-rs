@@ -293,55 +293,6 @@ static int math_type (lua_State *L) {
 }
 
 
-/*
-** {==================================================================
-** Deprecated functions (for compatibility only)
-** ===================================================================
-*/
-#if defined(LUA_COMPAT_MATHLIB)
-
-static int math_cosh (lua_State *L) {
-  lua_pushnumber(L, l_mathop(cosh)(luaL_checknumber(L, 1)));
-  return 1;
-}
-
-static int math_sinh (lua_State *L) {
-  lua_pushnumber(L, l_mathop(sinh)(luaL_checknumber(L, 1)));
-  return 1;
-}
-
-static int math_tanh (lua_State *L) {
-  lua_pushnumber(L, l_mathop(tanh)(luaL_checknumber(L, 1)));
-  return 1;
-}
-
-static int math_pow (lua_State *L) {
-  lua_Number x = luaL_checknumber(L, 1);
-  lua_Number y = luaL_checknumber(L, 2);
-  lua_pushnumber(L, l_mathop(pow)(x, y));
-  return 1;
-}
-
-static int math_frexp (lua_State *L) {
-  int e;
-  lua_pushnumber(L, l_mathop(frexp)(luaL_checknumber(L, 1), &e));
-  lua_pushinteger(L, e);
-  return 2;
-}
-
-static int math_ldexp (lua_State *L) {
-  lua_Number x = luaL_checknumber(L, 1);
-  int ep = (int)luaL_checkinteger(L, 2);
-  lua_pushnumber(L, l_mathop(ldexp)(x, ep));
-  return 1;
-}
-
-static int math_log10 (lua_State *L) {
-  lua_pushnumber(L, l_mathop(log10)(luaL_checknumber(L, 1)));
-  return 1;
-}
-
-#endif
 /* }================================================================== */
 
 
@@ -370,16 +321,6 @@ static const luaL_Reg mathlib[] = {
   {"sqrt",  math_sqrt},
   {"tan",   math_tan},
   {"type", math_type},
-#if defined(LUA_COMPAT_MATHLIB)
-  {"atan2", math_atan},
-  {"cosh",   math_cosh},
-  {"sinh",   math_sinh},
-  {"tanh",   math_tanh},
-  {"pow",   math_pow},
-  {"frexp", math_frexp},
-  {"ldexp", math_ldexp},
-  {"log10", math_log10},
-#endif
   /* placeholders */
   {"pi", NULL},
   {"huge", NULL},
