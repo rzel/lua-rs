@@ -1,0 +1,9 @@
+#!/bin/sh
+
+# Copyright (C) 2016 Ahmed Charles - acharles@outlook.com
+# Distributed under the MIT License.
+#    (See accompanying file LICENSE.txt or copy at
+#          http://opensource.org/licenses/MIT)
+
+LUA=`realpath puc-lua/src/tests/lua`
+(cd puc-lua/src/tests; $LUA -e '_U=true' all.lua)

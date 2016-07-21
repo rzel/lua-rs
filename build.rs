@@ -20,6 +20,7 @@ fn main() {
     assert!(os(Command::new("make").arg("-C").arg("puc-lua")).status().unwrap().success());
     assert!(Command::new("cp").arg("puc-lua/src/liblua.a").arg(&out_dir).status().unwrap().success());
     assert!(Command::new("cp").arg("puc-lua/src/lua").arg(&out_dir).status().unwrap().success());
+    assert!(Command::new("cp").arg("puc-lua/src/lua").arg("puc-lua/src/tests/lua").status().unwrap().success());
     assert!(Command::new("cp").arg("puc-lua/src/luac").arg(&out_dir).status().unwrap().success());
     assert!(Command::new("make").arg("-C").arg("puc-lua").arg("clean").status().unwrap().success());
 

@@ -6,3 +6,11 @@
 sudo: false
 language: rust
 cache: cargo
+addons:
+  apt:
+    packages:
+      - realpath
+script:
+  - cargo build --verbose
+  - cargo test --verbose
+  - ./run-tests
