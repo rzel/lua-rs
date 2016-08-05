@@ -19,3 +19,6 @@ build = "build.rs"
 
 [lib]
 name = "lua_rs" # Use valid identifier for the crate name.
+
+[dependencies]
+libc = "0.2.15"
