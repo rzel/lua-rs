@@ -6,6 +6,10 @@
 
 // Lua stand-alone interpreter
 
+extern crate lua_rs;
+
+use lua_rs::ffi;
+
 // #define lua_c
 
 // #include "lprefix.h"
@@ -150,12 +154,15 @@
 
 /*
 ** Prints an error message, adding the program name in front of it
-** (if present)
+** (if include_name is true).
 */
-// static void l_message (const char *pname, const char *msg) {
-//   if (pname) lua_writestringerror("%s: ", pname);
-//   lua_writestringerror("%s\n", msg);
-// }
+fn message(msg: &str, include_name: bool) {
+    use std::io::{self, Write};
+    if include_name {
+        write!(&mut io::stderr(), "{}: ", std::env::args().next().unwrap()).unwrap();
+    }
+    writeln!(&mut io::stderr(), "{}", msg).unwrap();
+}
 
 
 /*
@@ -593,18 +600,17 @@
 
 
 fn main() {
-//   int status, result;
-//   lua_State *L = luaL_newstate();  /* create state */
-//   if (L == NULL) {
-//     l_message(argv[0], "cannot create state: not enough memory");
-//     return EXIT_FAILURE;
-//   }
+    let l = unsafe { ffi::lauxlib::luaL_newstate() };  /* create state */
+    if l.is_null() {
+        message("cannot create state: not enough memory", true);
+        std::process::exit(1);
+    }
 //   lua_pushcfunction(L, &pmain);  /* to call 'pmain' in protected mode */
 //   lua_pushinteger(L, argc);  /* 1st argument */
 //   lua_pushlightuserdata(L, argv); /* 2nd argument */
 //   status = lua_pcall(L, 2, 1, 0);  /* do the call */
 //   result = lua_toboolean(L, -1);  /* get result */
 //   report(L, status);
-//   lua_close(L);
+    unsafe { ffi::lua::lua_close(l) };
 //   return (result && status == LUA_OK) ? EXIT_SUCCESS : EXIT_FAILURE;
 }
