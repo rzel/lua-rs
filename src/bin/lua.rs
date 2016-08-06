@@ -561,11 +561,11 @@ fn report(l: *mut ffi::lua::lua_State, status: libc::c_int, include_name: bool) 
 ** Reads the options and handles them all.
 */
 fn pmain_(l: *mut ffi::lua::lua_State) -> libc::c_int {
+    unsafe { ffi::lauxlib::luaL_checkversion(l); }  /* check that interpreter has correct version */
 //   int argc = (int)lua_tointeger(L, 1);
 //   char **argv = (char **)lua_touserdata(L, 2);
 //   int script;
 //   int args = collectargs(argv, &script);
-//   luaL_checkversion(L);  /* check that interpreter has correct version */
 //   if (argv[0] && argv[0][0]) progname = argv[0];
 //   if (args == has_error) {  /* bad arg? */
 //     print_usage(argv[script]);  /* 'script' has index of bad arg. */
