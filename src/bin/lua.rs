@@ -6,6 +6,7 @@
 
 // Lua stand-alone interpreter
 
+extern crate libc;
 extern crate lua_rs;
 
 use lua_rs::ffi;
@@ -557,7 +558,7 @@ fn message(msg: &str, include_name: bool) {
 ** Main body of stand-alone interpreter (to be called in protected mode).
 ** Reads the options and handles them all.
 */
-// static int pmain (lua_State *L) {
+fn pmain_(l: *mut ffi::lua::lua_State) -> libc::c_int {
 //   int argc = (int)lua_tointeger(L, 1);
 //   char **argv = (char **)lua_touserdata(L, 2);
 //   int script;
@@ -594,9 +595,13 @@ fn message(msg: &str, include_name: bool) {
 //     }
 //     else dofile(L, NULL);  /* executes stdin as a file */
 //   }
-//   lua_pushboolean(L, 1);  /* signal no errors */
-//   return 1;
-// }
+    unsafe { ffi::lua::lua_pushboolean(l, 1); }  /* signal no errors */
+    1
+}
+
+unsafe extern "C" fn pmain(l: *mut ffi::lua::lua_State) -> libc::c_int {
+    pmain_(l)
+}
 
 
 fn main() {
@@ -605,12 +610,10 @@ fn main() {
         message("cannot create state: not enough memory", true);
         std::process::exit(1);
     }
-//   lua_pushcfunction(L, &pmain);  /* to call 'pmain' in protected mode */
-//   lua_pushinteger(L, argc);  /* 1st argument */
-//   lua_pushlightuserdata(L, argv); /* 2nd argument */
-//   status = lua_pcall(L, 2, 1, 0);  /* do the call */
-//   result = lua_toboolean(L, -1);  /* get result */
+    unsafe { ffi::lua::lua_pushcfunction(l, Some(pmain)) };  /* to call 'pmain' in protected mode */
+    let status = unsafe { ffi::lua::lua_pcall(l, 0, 1, 0) };  /* do the call */
+    let result = unsafe { ffi::lua::lua_toboolean(l, -1) };  /* get result */
 //   report(L, status);
     unsafe { ffi::lua::lua_close(l) };
-//   return (result && status == LUA_OK) ? EXIT_SUCCESS : EXIT_FAILURE;
+    std::process::exit(if result != 0 && status == ffi::lua::LUA_OK { 0 } else { 1 });
 }
