@@ -458,63 +458,112 @@ fn report(l: *mut ffi::lua::lua_State, status: libc::c_int, include_name: bool) 
 // }
 
 
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug)]
+enum RunnableArg<'a> {
+    Library(&'a str), /* -l */
+    Execute(&'a str), /* -e */
+}
 
-/* bits of various argument indicators in 'args' */
-// #define has_error	1	/* bad option */
-// #define has_i		2	/* -i */
-// #define has_v		4	/* -v */
-// #define has_e		8	/* -e */
-// #define has_E		16	/* -E */
+/* represents the various argument indicators in 'args' */
+#[derive(Default, PartialEq, Eq, PartialOrd, Ord, Debug)]
+struct ProgramOptions<'a> {
+    interactive: bool,                   /* -i */
+    version: bool,                       /* -v */
+    ignore_env: bool,                    /* -E */
+    execute: bool,                       /* -e */
+    stop_options: bool,                  /* -- */
+    runnable_args: Vec<RunnableArg<'a>>, /* -l or -e */
+    pre_script_args: &'a [&'a str],      /* before script name */
+    script_args: &'a [&'a str],          /* script name and args */
+}
+
 
 /*
-** Traverses all arguments from 'argv', returning a mask with those
+** Traverses all arguments from 'args', returning a ProgramOptions with those
 ** needed before running any Lua code (or an error code if it finds
-** any invalid argument). 'first' returns the first not-handled argument
-** (either the script name or a bad argument in case of error).
+** any invalid argument). It returns the first not-handled argument as
+** either the script name or a bad argument in case of error.
 */
-// static int collectargs (char **argv, int *first) {
-//   int args = 0;
-//   int i;
-//   for (i = 1; argv[i] != NULL; i++) {
-//     *first = i;
-//     if (argv[i][0] != '-')  /* not an option? */
-//         return args;  /* stop handling options */
-//     switch (argv[i][1]) {  /* else check option */
-//       case '-':  /* '--' */
-//         if (argv[i][2] != '\0')  /* extra characters after '--'? */
-//           return has_error;  /* invalid option */
-//         *first = i + 1;
-//         return args;
-//       case '\0':  /* '-' */
-//         return args;  /* script "name" is '-' */
-//       case 'E':
-//         if (argv[i][2] != '\0')  /* extra characters after 1st? */
-//           return has_error;  /* invalid option */
-//         args |= has_E;
-//         break;
-//       case 'i':
-//         args |= has_i;  /* (-i implies -v) *//* FALLTHROUGH */
-//       case 'v':
-//         if (argv[i][2] != '\0')  /* extra characters after 1st? */
-//           return has_error;  /* invalid option */
-//         args |= has_v;
-//         break;
-//       case 'e':
-//         args |= has_e;  /* FALLTHROUGH */
-//       case 'l':  /* both options need an argument */
-//         if (argv[i][2] == '\0') {  /* no concatenated argument? */
-//           i++;  /* try next 'argv' */
-//           if (argv[i] == NULL || argv[i][0] == '-')
-//             return has_error;  /* no next argument or it is another option */
-//         }
-//         break;
-//       default:  /* invalid option */
-//         return has_error;
-//     }
-//   }
-//   *first = i;  /* no script name */
-//   return args;
-// }
+fn collectargs<'a>(args: &'a [&str]) -> Result<ProgramOptions<'a>, &'a str> {
+    fn add_script_args<'b>(mut options: ProgramOptions<'b>, args: &'b [&str], script: usize)
+        -> Result<ProgramOptions<'b>, &'b str> {
+        let (pre_script_args, script_args) = args.split_at(script);
+        options.pre_script_args = pre_script_args;
+        options.script_args = script_args;
+        Ok(options)
+    }
+    use RunnableArg::{Library, Execute};
+    let mut options: ProgramOptions = Default::default();
+    let mut first = 0usize;
+    let mut skip = 0;
+    for (i, arg) in args.iter().enumerate().skip(1) {
+        first = i;
+        if skip != 0 {
+            if arg.chars().next().unwrap() == '-' { /* another option instead of argument */
+                return Err(args[first]);
+            }
+            options.runnable_args.push(if skip == 1 { Library(arg) } else { Execute(arg) });
+            skip = 0;
+            continue;
+        }
+        if arg.chars().next().unwrap() != '-' {  /* not an option? */
+            return add_script_args(options, args, first);  /* stop handling options */
+        }
+        if arg.len() == 1 {  /* '-' */
+            return add_script_args(options, args, first);  /* script "name" is '-' */
+        }
+        match arg.chars().skip(1).next().unwrap() {  /* else check option */
+            '-' => {  /* '--' */
+                if arg.len() != 2 {  /* extra characters after '--'? */
+                    return Err(args[first]);  /* invalid option */
+                }
+                options.stop_options = true;
+                return add_script_args(options, args, first + 1);
+            }
+            'E' => {
+                if arg.len() != 2 {  /* extra characters after 1st? */
+                    return Err(args[first]);  /* invalid option */
+                }
+                options.ignore_env = true;
+            }
+            'i' => {  /* (-i implies -v) */
+                if arg.len() != 2 {  /* extra characters after 1st? */
+                    return Err(args[first]);  /* invalid option */
+                }
+                options.interactive = true;
+                options.version = true;
+            }
+            'v' => {
+                if arg.len() != 2 {  /* extra characters after 1st? */
+                    return Err(args[first]);  /* invalid option */
+                }
+                options.version = true;
+            }
+            'e' => {
+                options.execute = true;
+                if arg.len() == 2 {  /* no concatenated argument? */
+                    skip = 2;  /* try next 'arg' */
+                } else {
+                    let (_, a) = arg.split_at(2);
+                    options.runnable_args.push(Execute(a));
+                }
+            }
+            'l' => {
+                if arg.len() == 2 {  /* no concatenated argument? */
+                    skip = 1;  /* try next 'arg' */
+                } else {
+                    let (_, a) = arg.split_at(2);
+                    options.runnable_args.push(Library(a));
+                }
+            }
+            _ => return Err(args[first]),  /* invalid option */
+        }
+    }
+    if skip != 0 {  /* no argument to option */
+        return Err(args[first])
+    }
+    add_script_args(options, args, first + 1)  /* no script name */
+}
 
 
 /*
@@ -562,15 +611,15 @@ fn report(l: *mut ffi::lua::lua_State, status: libc::c_int, include_name: bool) 
 */
 fn pmain_(l: *mut ffi::lua::lua_State) -> libc::c_int {
     unsafe { ffi::lauxlib::luaL_checkversion(l); }  /* check that interpreter has correct version */
-//   int argc = (int)lua_tointeger(L, 1);
-//   char **argv = (char **)lua_touserdata(L, 2);
-//   int script;
-//   int args = collectargs(argv, &script);
-//   if (argv[0] && argv[0][0]) progname = argv[0];
-//   if (args == has_error) {  /* bad arg? */
+    let args: Vec<_> = std::env::args().collect();
+    let arg_strs: Vec<_> = args.iter().map(|arg| arg.as_ref()).collect();
+    let _ = match collectargs(&arg_strs) {
+        Ok(o) => o,
+        Err(_) => {
 //     print_usage(argv[script]);  /* 'script' has index of bad arg. */
-//     return 0;
-//   }
+            return 0;
+        }
+    };
 //   if (args & has_v)  /* option '-v'? */
 //     print_version();
 //   if (args & has_E) {  /* option '-E'? */
@@ -618,4 +667,56 @@ fn main() {
     report(l, status, true);
     unsafe { ffi::lua::lua_close(l) };
     std::process::exit(if result != 0 && status == ffi::lua::LUA_OK { 0 } else { 1 });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::collectargs;
+    use super::ProgramOptions;
+    use super::RunnableArg::{Library, Execute};
+
+    #[test]
+    fn test_collectargs() {
+        assert_eq!(collectargs(vec!("lua").as_slice()), Ok(ProgramOptions {
+            pre_script_args: &["lua"], ..Default::default()
+        }));
+        assert_eq!(collectargs(vec!("lua", "name").as_slice()), Ok(ProgramOptions {
+            pre_script_args: &["lua"], script_args: &["name"], ..Default::default()
+        }));
+        assert_eq!(collectargs(vec!("lua", "-").as_slice()), Ok(ProgramOptions {
+            pre_script_args: &["lua"], script_args: &["-"], ..Default::default()
+        }));
+        assert_eq!(collectargs(vec!("lua", "--").as_slice()), Ok(ProgramOptions {
+            stop_options: true, pre_script_args: &["lua", "--"], ..Default::default()
+        }));
+        assert_eq!(collectargs(vec!("lua", "-i").as_slice()), Ok(ProgramOptions {
+            interactive: true, version: true, pre_script_args: &["lua", "-i"], ..Default::default()
+        }));
+        assert_eq!(collectargs(vec!("lua", "-v").as_slice()), Ok(ProgramOptions {
+            version: true, pre_script_args: &["lua", "-v"], ..Default::default()
+        }));
+        assert_eq!(collectargs(vec!("lua", "-v", "name").as_slice()), Ok(ProgramOptions {
+            version: true, pre_script_args: &["lua", "-v"], script_args: &["name"], ..Default::default()
+        }));
+        assert_eq!(collectargs(vec!("lua", "-e").as_slice()), Err("-e"));
+        assert_eq!(collectargs(vec!("lua", "-escript").as_slice()), Ok(ProgramOptions {
+            execute: true, runnable_args: vec!(Execute("script")), pre_script_args: &["lua", "-escript"],
+            ..Default::default()
+        }));
+        assert_eq!(collectargs(vec!("lua", "-e", "script").as_slice()), Ok(ProgramOptions {
+            execute: true, runnable_args: vec!(Execute("script")), pre_script_args: &["lua", "-e", "script"],
+            ..Default::default()
+        }));
+        assert_eq!(collectargs(vec!("lua", "-E").as_slice()), Ok(ProgramOptions {
+            ignore_env: true, pre_script_args: &["lua", "-E"], ..Default::default()
+        }));
+        assert_eq!(collectargs(vec!("lua", "-l").as_slice()), Err("-l"));
+        assert_eq!(collectargs(vec!("lua", "-llib").as_slice()), Ok(ProgramOptions {
+            runnable_args: vec!(Library("lib")), pre_script_args: &["lua", "-llib"], ..Default::default()
+        }));
+        assert_eq!(collectargs(vec!("lua", "-l", "lib").as_slice()), Ok(ProgramOptions {
+            runnable_args: vec!(Library("lib")), pre_script_args: &["lua", "-l", "lib"], ..Default::default()
+        }));
+        assert_eq!(collectargs(vec!("lua", "-x").as_slice()), Err("-x"));
+    }
 }
