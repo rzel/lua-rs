@@ -27,17 +27,11 @@ use lua_rs::ffi;
 // #include "lualib.h"
 
 
-// #if !defined(LUA_PROMPT)
-// #define LUA_PROMPT		"> "
-// #define LUA_PROMPT2		">> "
-// #endif
+const LUA_PROMPT: &'static str = "> ";
+const LUA_PROMPT2: &'static str = ">> ";
 
 // #if !defined(LUA_PROGNAME)
 // #define LUA_PROGNAME		"lua"
-// #endif
-
-// #if !defined(LUA_MAXINPUT)
-// #define LUA_MAXINPUT		512
 // #endif
 
 const LUA_INIT_VAR_NAME: &'static str = "=LUA_INIT";
@@ -72,10 +66,9 @@ const LUA_INITVARVERSION_NAME: &'static str = "=LUA_INIT_5_3";
 
 
 /*
-** lua_readline defines how to show a prompt and then read a line from
+** readline defines how to show a prompt and then read a line from
 ** the standard input.
 ** lua_saveline defines how to "save" a read line in a "history".
-** lua_freeline defines how to free a line read by lua_readline.
 */
 // #if !defined(lua_readline)	/* { */
 
@@ -85,15 +78,20 @@ const LUA_INITVARVERSION_NAME: &'static str = "=LUA_INIT_5_3";
 // #include <readline/history.h>
 // #define lua_readline(L,b,p)	((void)L, ((b)=readline(p)) != NULL)
 // #define lua_saveline(L,line)	((void)L, add_history(line))
-// #define lua_freeline(L,b)	((void)L, free(b))
 
 // #else				/* }{ */
 
-// #define lua_readline(L,b,p) \
-//         ((void)L, fputs(p, stdout), fflush(stdout),  /* show prompt */ \
-//         fgets(b, LUA_MAXINPUT, stdin) != NULL)  /* get line */
+fn readline(prompt: &str) -> Option<String> {
+    use std::io::{self, Write};
+    write!(io::stdout(), "{}", prompt).unwrap();
+    io::stdout().flush().unwrap();  /* show prompt */
+    let mut input = String::new();
+    match io::stdin().read_line(&mut input) {  /* get line */
+        Ok(_) => Some(input),
+        Err(_) => None,
+    }
+}
 // #define lua_saveline(L,line)	{ (void)L; (void)line; }
-// #define lua_freeline(L,b)	{ (void)L; (void)b; }
 
 // #endif				/* } */
 
@@ -304,13 +302,16 @@ fn dolibrary(l: *mut ffi::lua::lua_State, name: &str) -> libc::c_int {
 /*
 ** Returns the string to be used as a prompt by the interpreter.
 */
-// static const char *get_prompt (lua_State *L, int firstline) {
-//   const char *p;
-//   lua_getglobal(L, firstline ? "_PROMPT" : "_PROMPT2");
-//   p = lua_tostring(L, -1);
-//   if (p == NULL) p = (firstline ? LUA_PROMPT : LUA_PROMPT2);
-//   return p;
-// }
+fn get_prompt(l: *mut ffi::lua::lua_State, firstline: bool) -> String {
+    let s = std::ffi::CString::new(if firstline { "_PROMPT" } else { "_PROMPT2" }).unwrap();
+    unsafe { ffi::lua::lua_getglobal(l, s.as_ptr()); }
+    let p = unsafe { ffi::lua::lua_tostring(l, -1) };
+    if p.is_null() {
+        if firstline { LUA_PROMPT } else { LUA_PROMPT2 }.to_string()
+    } else {
+        unsafe { std::ffi::CStr::from_ptr(p) }.to_str().unwrap().to_string()
+    }
+}
 
 /* mark in error messages for incomplete statements */
 // #define EOFMARK		"<eof>"
@@ -338,25 +339,23 @@ fn dolibrary(l: *mut ffi::lua::lua_State, name: &str) -> libc::c_int {
 /*
 ** Prompt the user, read a line, and push it into the Lua stack.
 */
-// static int pushline (lua_State *L, int firstline) {
-//   char buffer[LUA_MAXINPUT];
-//   char *b = buffer;
-//   size_t l;
-//   const char *prmt = get_prompt(L, firstline);
-//   int readstatus = lua_readline(L, b, prmt);
-//   if (readstatus == 0)
-//     return 0;  /* no input (prompt will be popped by caller) */
-//   lua_pop(L, 1);  /* remove prompt */
-//   l = strlen(b);
-//   if (l > 0 && b[l-1] == '\n')  /* line ends with newline? */
-//     b[--l] = '\0';  /* remove it */
-//   if (firstline && b[0] == '=')  /* for compatibility with 5.2, ... */
-//     lua_pushfstring(L, "return %s", b + 1);  /* change '=' to 'return' */
-//   else
-//     lua_pushlstring(L, b, l);
-//   lua_freeline(L, b);
-//   return 1;
-// }
+fn pushline(l: *mut ffi::lua::lua_State, firstline: bool) -> bool {
+    let prompt = get_prompt(l, firstline);
+    let mut line = match readline(&prompt) {
+        Some(l) => l,
+        None => return false,
+    };
+    if line.is_empty() {
+        return false;  /* no input (prompt will be popped by caller) */
+    }
+    unsafe { ffi::lua::lua_pop(l, 1); }  /* remove prompt */
+    if line.ends_with('\n') {  /* line ends with newline? */
+        line.pop();  /* remove it */
+    }
+    let s = std::ffi::CString::new(line).unwrap();
+    unsafe { ffi::lua::lua_pushlstring(l, s.as_ptr(), s.to_bytes().len()); }
+    true
+}
 
 
 /*
@@ -406,8 +405,9 @@ fn dolibrary(l: *mut ffi::lua::lua_State, name: &str) -> libc::c_int {
 fn loadline(l: *mut ffi::lua::lua_State) -> libc::c_int {
 //   int status;
     unsafe { ffi::lua::lua_settop(l, 0); }
-//   if (!pushline(L, 1))
-//     return -1;  /* no input */
+    if !pushline(l, true) {
+        return -1;  /* no input */
+    }
 //   if ((status = addreturn(L)) != LUA_OK)  /* 'return ...' did not work? */
 //     status = multiline(L);  /* try as command, maybe with continuation lines */
 //   lua_remove(L, 1);  /* remove line from the stack */
