@@ -40,29 +40,14 @@ const LUA_INITVARVERSION_NAME: &'static str = "=LUA_INIT_5_3";
 
 
 /*
-** lua_stdin_is_tty detects whether the standard input is a 'tty' (that
+** stdin_is_tty detects whether the standard input is a 'tty' (that
 ** is, whether we're running lua interactively).
 */
-// #if !defined(lua_stdin_is_tty)	/* { */
+#[cfg(unix)]
+fn stdin_is_tty() -> bool { unsafe { libc::isatty(0) != 0 } }
 
-// #if defined(LUA_USE_POSIX)	/* { */
-
-// #include <unistd.h>
-// #define lua_stdin_is_tty()	isatty(0)
-
-// #elif defined(LUA_USE_WINDOWS)	/* }{ */
-
-// #include <io.h>
-// #define lua_stdin_is_tty()	_isatty(_fileno(stdin))
-
-// #else				/* }{ */
-
-/* ISO C definition */
-// #define lua_stdin_is_tty()	1  /* assume stdin is a tty */
-
-// #endif				/* } */
-
-// #endif				/* } */
+#[cfg(not(unix))]
+fn stdin_is_tty() -> bool { true }  /* assume stdin is a tty */
 
 
 /*
@@ -686,14 +671,14 @@ fn pmain_(l: *mut ffi::lua::lua_State) -> libc::c_int {
     }
     if options.interactive {  /* -i option? */
         dorepl(l);  /* do read-eval-print loop */
+    } else if options.script_args.len() == 0 && !(options.execute || options.version) {  /* no arguments? */
+        if stdin_is_tty() {  /* running in interactive mode? */
+            print_version();
+            dorepl(l);  /* do read-eval-print loop */
+        } else {
+            dofile(l, None);  /* executes stdin as a file */
+        }
     }
-//   else if (script == argc && !(args & (has_e | has_v))) {  /* no arguments? */
-//     if (lua_stdin_is_tty()) {  /* running in interactive mode? */
-//       print_version();
-//       doREPL(L);  /* do read-eval-print loop */
-//     }
-//     else dofile(L, NULL);  /* executes stdin as a file */
-//   }
     unsafe { ffi::lua::lua_pushboolean(l, 1); }  /* signal no errors */
     1
 }
