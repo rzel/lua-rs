@@ -5,7 +5,7 @@
 #    (See accompanying file LICENSE.txt or copy at
 #          http://opensource.org/licenses/MIT)
 
-LUA=`realpath puc-lua/src/tests/lua`
+LUA=`realpath target/debug/lua`
 mkdir -p puc-lua/src/tests/libs/P1
 (cd puc-lua/src/tests; $LUA all.lua)
 rm puc-lua/src/tests/time-debug.txt

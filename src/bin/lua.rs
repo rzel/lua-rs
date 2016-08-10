@@ -617,6 +617,19 @@ fn handle_luainit(l: *mut ffi::lua::lua_State) -> libc::c_int {
 }
 
 
+#[cfg(debug_assertions)]
+fn openlibs(l: *mut ffi::lua::lua_State) {
+    unsafe { ffi::lualib::luaL_openlibs(l); }
+    extern { fn luaB_opentests(l: *mut ffi::lua::lua_State) -> libc::c_int; }
+    let s = std::ffi::CString::new("T").unwrap();
+    unsafe { ffi::lauxlib::luaL_requiref(l, s.as_ptr(), Some(luaB_opentests), 1); }
+}
+#[cfg(not(debug_assertions))]
+fn openlibs(l: *mut ffi::lua::lua_State) {
+    unsafe { ffi::lualib::luaL_openlibs(l); }
+}
+
+
 /*
 ** Main body of stand-alone interpreter (to be called in protected mode).
 ** Reads the options and handles them all.
@@ -640,7 +653,7 @@ fn pmain_(l: *mut ffi::lua::lua_State) -> libc::c_int {
         let noenv = std::ffi::CString::new("LUA_NOENV").unwrap();
         unsafe { ffi::lua::lua_setfield(l, ffi::lua::LUA_REGISTRYINDEX, noenv.as_ptr()); }
     }
-    unsafe { ffi::lualib::luaL_openlibs(l); }  /* open standard libraries */
+    openlibs(l);  /* open standard libraries */
     createargtable(l, &options);  /* create table 'arg' */
     if !options.ignore_env {  /* no option '-E'? */
         if handle_luainit(l) != ffi::lua::LUA_OK {  /* run LUA_INIT */
@@ -673,8 +686,33 @@ unsafe extern "C" fn pmain(l: *mut ffi::lua::lua_State) -> libc::c_int {
 }
 
 
+#[cfg(debug_assertions)]
+fn newstate() -> *mut ffi::lua::lua_State {
+    #[repr(C)]
+    struct Memcontrol {
+      numblocks: libc::c_ulong,
+      total: libc::c_ulong,
+      maxmem: libc::c_ulong,
+      memlimit: libc::c_ulong,
+      objcount: [libc::c_ulong; ffi::lua::LUA_NUMTAGS as usize],
+    }
+
+    extern { static mut l_memcontrol: Memcontrol; }
+
+    extern {
+        fn debug_realloc(ud: *mut libc::c_void, ptr: *mut libc::c_void,
+                         osize: libc::size_t, osize: libc::size_t) -> *mut libc::c_void;
+    }
+    unsafe { ffi::lua::lua_newstate(Some(debug_realloc), &mut l_memcontrol as *mut Memcontrol as *mut _) }
+}
+#[cfg(not(debug_assertions))]
+fn newstate() -> *mut ffi::lua::lua_State {
+    unsafe { ffi::lauxlib::luaL_newstate() }
+}
+
+
 fn main() {
-    let l = unsafe { ffi::lauxlib::luaL_newstate() };  /* create state */
+    let l = newstate();  /* create state */
     if l.is_null() {
         message("cannot create state: not enough memory", true);
         std::process::exit(1);
