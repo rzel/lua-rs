@@ -6,11 +6,6 @@
 #          http://opensource.org/licenses/MIT)
 
 LUA=`realpath puc-lua/src/tests/lua`
-make -C puc-lua/src/tests/libs
 mkdir -p puc-lua/src/tests/libs/P1
 (cd puc-lua/src/tests; $LUA all.lua)
-rm puc-lua/src/tests/libs/lib1.so \
-   puc-lua/src/tests/libs/lib11.so \
-   puc-lua/src/tests/libs/lib2-v2.so \
-   puc-lua/src/tests/libs/lib21.so \
-   puc-lua/src/tests/time-debug.txt
+rm puc-lua/src/tests/time-debug.txt

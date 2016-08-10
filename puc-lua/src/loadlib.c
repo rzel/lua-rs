@@ -92,8 +92,6 @@
 */
 static const int CLIBS = 0;
 
-#define LIB_FAIL	"open"
-
 #define setprogdir(L)		((void)0)
 
 
@@ -124,126 +122,12 @@ static lua_CFunction lsys_sym (lua_State *L, void *lib, const char *sym);
 
 
 
-#if defined(LUA_USE_DLOPEN)	/* { */
-/*
-** {========================================================================
-** This is an implementation of loadlib based on the dlfcn interface.
-** The dlfcn interface is available in Linux, SunOS, Solaris, IRIX, FreeBSD,
-** NetBSD, AIX 4.2, HPUX 11, and  probably most other Unix flavors, at least
-** as an emulation layer on top of native functions.
-** =========================================================================
-*/
-
-#include <dlfcn.h>
-
-/*
-** Macro to convert pointer-to-void* to pointer-to-function. This cast
-** is undefined according to ISO C, but POSIX assumes that it works.
-** (The '__extension__' in gnu compilers is only to avoid warnings.)
-*/
-#if defined(__GNUC__)
-#define cast_func(p) (__extension__ (lua_CFunction)(p))
-#else
-#define cast_func(p) ((lua_CFunction)(p))
-#endif
-
-
-static void lsys_unloadlib (void *lib) {
-  dlclose(lib);
-}
-
-
-static void *lsys_load (lua_State *L, const char *path, int seeglb) {
-  void *lib = dlopen(path, RTLD_NOW | (seeglb ? RTLD_GLOBAL : RTLD_LOCAL));
-  if (lib == NULL) lua_pushstring(L, dlerror());
-  return lib;
-}
-
-
-static lua_CFunction lsys_sym (lua_State *L, void *lib, const char *sym) {
-  lua_CFunction f = cast_func(dlsym(lib, sym));
-  if (f == NULL) lua_pushstring(L, dlerror());
-  return f;
-}
-
-/* }====================================================== */
-
-
-
-#elif defined(LUA_DL_DLL)	/* }{ */
-/*
-** {======================================================================
-** This is an implementation of loadlib for Windows using native functions.
-** =======================================================================
-*/
-
-#include <windows.h>
-
-#undef setprogdir
-
-/*
-** optional flags for LoadLibraryEx
-*/
-#if !defined(LUA_LLE_FLAGS)
-#define LUA_LLE_FLAGS	0
-#endif
-
-
-static void setprogdir (lua_State *L) {
-  char buff[MAX_PATH + 1];
-  char *lb;
-  DWORD nsize = sizeof(buff)/sizeof(char);
-  DWORD n = GetModuleFileNameA(NULL, buff, nsize);
-  if (n == 0 || n == nsize || (lb = strrchr(buff, '\\')) == NULL)
-    luaL_error(L, "unable to get ModuleFileName");
-  else {
-    *lb = '\0';
-    luaL_gsub(L, lua_tostring(L, -1), LUA_EXEC_DIR, buff);
-    lua_remove(L, -2);  /* remove original string */
-  }
-}
-
-
-static void pusherror (lua_State *L) {
-  int error = GetLastError();
-  char buffer[128];
-  if (FormatMessageA(FORMAT_MESSAGE_IGNORE_INSERTS | FORMAT_MESSAGE_FROM_SYSTEM,
-      NULL, error, 0, buffer, sizeof(buffer)/sizeof(char), NULL))
-    lua_pushstring(L, buffer);
-  else
-    lua_pushfstring(L, "system error %d\n", error);
-}
-
-static void lsys_unloadlib (void *lib) {
-  FreeLibrary((HMODULE)lib);
-}
-
-
-static void *lsys_load (lua_State *L, const char *path, int seeglb) {
-  HMODULE lib = LoadLibraryExA(path, NULL, LUA_LLE_FLAGS);
-  (void)(seeglb);  /* not used: symbols are 'global' by default */
-  if (lib == NULL) pusherror(L);
-  return lib;
-}
-
-
-static lua_CFunction lsys_sym (lua_State *L, void *lib, const char *sym) {
-  lua_CFunction f = (lua_CFunction)GetProcAddress((HMODULE)lib, sym);
-  if (f == NULL) pusherror(L);
-  return f;
-}
-
-/* }====================================================== */
-
-
-#else				/* }{ */
 /*
 ** {======================================================
 ** Fallback for other systems
 ** =======================================================
 */
 
-#undef LIB_FAIL
 #define LIB_FAIL	"absent"
 
 
@@ -269,7 +153,6 @@ static lua_CFunction lsys_sym (lua_State *L, void *lib, const char *sym) {
 }
 
 /* }====================================================== */
-#endif				/* } */
 
 
 /*
