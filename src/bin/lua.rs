@@ -11,28 +11,9 @@ extern crate lua_rs;
 
 use lua_rs::ffi;
 
-// #define lua_c
-
-// #include "lprefix.h"
-
-
-// #include <signal.h>
-// #include <stdio.h>
-// #include <stdlib.h>
-// #include <string.h>
-
-// #include "lua.h"
-
-// #include "lauxlib.h"
-// #include "lualib.h"
-
 
 const LUA_PROMPT: &'static str = "> ";
 const LUA_PROMPT2: &'static str = ">> ";
-
-// #if !defined(LUA_PROGNAME)
-// #define LUA_PROGNAME		"lua"
-// #endif
 
 const LUA_INIT_VAR_NAME: &'static str = "=LUA_INIT";
 
@@ -89,8 +70,6 @@ fn saveline(_: &str) {}
 
 
 static mut global_l: *mut ffi::lua::lua_State = 0 as *mut _;
-
-// static const char *progname = LUA_PROGNAME;
 
 
 /*
