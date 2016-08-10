@@ -314,8 +314,7 @@ fn get_prompt(l: *mut ffi::lua::lua_State, firstline: bool) -> String {
 }
 
 /* mark in error messages for incomplete statements */
-// #define EOFMARK		"<eof>"
-// #define marklen		(sizeof(EOFMARK)/sizeof(char) - 1)
+const EOFMARK: &'static str = "<eof>";
 
 
 /*
@@ -323,17 +322,18 @@ fn get_prompt(l: *mut ffi::lua::lua_State, firstline: bool) -> String {
 ** message at the top of the stack ends with the above mark for
 ** incomplete statements.
 */
-// static int incomplete (lua_State *L, int status) {
-//   if (status == LUA_ERRSYNTAX) {
-//     size_t lmsg;
-//     const char *msg = lua_tolstring(L, -1, &lmsg);
-//     if (lmsg >= marklen && strcmp(msg + lmsg - marklen, EOFMARK) == 0) {
-//       lua_pop(L, 1);
-//       return 1;
-//     }
-//   }
-//   return 0;  /* else... */
-// }
+fn incomplete(l: *mut ffi::lua::lua_State, status: libc::c_int) -> bool {
+    if status == ffi::lua::LUA_ERRSYNTAX {
+        let mut lmsg: libc::size_t = 0;
+        let msg = unsafe { ffi::lua::lua_tolstring(l, -1, &mut lmsg) };
+        let s = unsafe { std::ffi::CStr::from_ptr(msg) };
+        if s.to_str().unwrap().ends_with(EOFMARK) {
+            unsafe { ffi::lua::lua_pop(l, 1); }
+            return true;
+        }
+    }
+    false  /* else... */
+}
 
 
 /*
@@ -384,20 +384,22 @@ fn addreturn(l: *mut ffi::lua::lua_State) -> libc::c_int {
 /*
 ** Read multiple lines until a complete Lua statement
 */
-// static int multiline (lua_State *L) {
-//   for (;;) {  /* repeat until gets a complete statement */
-//     size_t len;
-//     const char *line = lua_tolstring(L, 1, &len);  /* get what it has */
-//     int status = luaL_loadbuffer(L, line, len, "=stdin");  /* try it */
-//     if (!incomplete(L, status) || !pushline(L, 0)) {
-//       lua_saveline(L, line);  /* keep history */
-//       return status;  /* cannot or should not try to add continuation line */
-//     }
-//     lua_pushliteral(L, "\n");  /* add newline... */
-//     lua_insert(L, -2);  /* ...between the two lines */
-//     lua_concat(L, 3);  /* join them */
-//   }
-// }
+fn multiline(l: *mut ffi::lua::lua_State) -> libc::c_int {
+    loop {  /* repeat until gets a complete statement */
+        let mut len: libc::size_t = 0;
+        let line = unsafe { ffi::lua::lua_tolstring(l, 1, &mut len) };  /* get what it has */
+        let s = std::ffi::CString::new("=stdin").unwrap();
+        let status = unsafe { ffi::lauxlib::luaL_loadbuffer(l, line, len, s.as_ptr()) };  /* try it */
+        if !incomplete(l, status) || !pushline(l, false) {
+            let s = unsafe { std::ffi::CStr::from_ptr(line) };
+            saveline(s.to_str().unwrap());  /* keep history */
+            return status;  /* cannot or should not try to add continuation line */
+        }
+        unsafe { ffi::lua::lua_pushliteral(l, "\n"); }  /* add newline... */
+        unsafe { ffi::lua::lua_insert(l, -2); }  /* ...between the two lines */
+        unsafe { ffi::lua::lua_concat(l, 3); }  /* join them */
+    }
+}
 
 
 /*
@@ -411,9 +413,9 @@ fn loadline(l: *mut ffi::lua::lua_State) -> libc::c_int {
     if !pushline(l, true) {
         return -1;  /* no input */
     }
-    let status = addreturn(l);
+    let mut status = addreturn(l);
     if status != ffi::lua::LUA_OK {  /* 'return ...' did not work? */
-//     status = multiline(L);  /* try as command, maybe with continuation lines */
+        status = multiline(l);  /* try as command, maybe with continuation lines */
     }
     unsafe { ffi::lua::lua_remove(l, 1); }  /* remove line from the stack */
     assert!(unsafe { ffi::lua::lua_gettop(l) } == 1);
