@@ -36,14 +36,11 @@ LIB_O=	lauxlib.o lbaselib.o lcorolib.o ldblib.o liolib.o \
 	lmathlib.o loslib.o lstrlib.o ltablib.o lutf8lib.o loadlib.o linit.o
 BASE_O= $(CORE_O) $(LIB_O) $(MYOBJS)
 
-LUA_T=	lua
-LUA_O=	lua.o
-
 LUAC_T=	luac
 LUAC_O=	luac.o
 
-ALL_O= $(BASE_O) $(LUA_O) $(LUAC_O)
-ALL_T= $(LUA_A) $(LUA_T) $(LUAC_T)
+ALL_O= $(BASE_O) $(LUAC_O)
+ALL_T= $(LUA_A) $(LUAC_T)
 ALL_A= $(LUA_A)
 
 # Targets start here.
@@ -58,9 +55,6 @@ a:	$(ALL_A)
 $(LUA_A): $(BASE_O)
 	$(AR) $@ $(BASE_O)
 	$(RANLIB) $@
-
-$(LUA_T): $(LUA_O) $(LUA_A)
-	$(CC) -o $@ $(LDFLAGS) $(LUA_O) $(LUA_A) $(LIBS)
 
 $(LUAC_T): $(LUAC_O) $(LUA_A)
 	$(CC) -o $@ $(LDFLAGS) $(LUAC_O) $(LUA_A) $(LIBS)
@@ -113,7 +107,7 @@ macosx:
 	$(MAKE) $(ALL) SYSCFLAGS="-DLUA_USE_MACOSX" SYSLIBS="-lreadline" CC=cc
 
 mingw:
-	$(MAKE) "LUA_A=lua53.dll" "LUA_T=lua.exe" \
+	$(MAKE) "LUA_A=lua53.dll" \
 	"AR=$(CC) -shared -o" "RANLIB=strip --strip-unneeded" \
 	"SYSCFLAGS=-DLUA_BUILD_AS_DLL" "SYSLIBS=" "SYSLDFLAGS=-s" lua.exe
 	$(MAKE) "LUAC_T=luac.exe" luac.exe
@@ -180,7 +174,6 @@ ltable.o: ltable.c lprefix.h lua.h luaconf.h ldebug.h lstate.h lobject.h \
 ltablib.o: ltablib.c lprefix.h lua.h luaconf.h lauxlib.h lualib.h
 ltm.o: ltm.c lprefix.h lua.h luaconf.h ldebug.h lstate.h lobject.h \
  llimits.h ltm.h lzio.h lmem.h ldo.h lstring.h lgc.h ltable.h lvm.h
-lua.o: lua.c lprefix.h lua.h luaconf.h lauxlib.h lualib.h
 luac.o: luac.c lprefix.h lua.h luaconf.h lauxlib.h lobject.h llimits.h \
  lstate.h ltm.h lzio.h lmem.h lundump.h ldebug.h lopcodes.h
 lundump.o: lundump.c lprefix.h lua.h luaconf.h ldebug.h lstate.h \

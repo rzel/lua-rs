@@ -22,3 +22,4 @@ name = "lua_rs" # Use valid identifier for the crate name.
 
 [dependencies]
 libc = "0.2.15"
+readline = { version = "0.0.12", optional = true }
