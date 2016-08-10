@@ -55,17 +55,23 @@ fn stdin_is_tty() -> bool { true }  /* assume stdin is a tty */
 ** the standard input.
 ** saveline defines how to "save" a read line in a "history".
 */
-// #if !defined(lua_readline)	/* { */
+#[cfg(feature = "readline")]
+extern crate readline;
+#[cfg(feature = "readline")]
+fn readline(prompt: &str) -> Option<String> {
+    match readline::readline(prompt) {
+        Ok(s) => Some(s),
+        Err(_) => None,
+    }
+}
+#[cfg(feature = "readline")]
+fn saveline(line: &str) {
+    match readline::add_history(line) {
+        Ok(_) => (), Err(_) => (),
+    }
+}
 
-// #if defined(LUA_USE_READLINE)	/* { */
-
-// #include <readline/readline.h>
-// #include <readline/history.h>
-// #define lua_readline(L,b,p)	((void)L, ((b)=readline(p)) != NULL)
-// #define lua_saveline(L,line)	((void)L, add_history(line))
-
-// #else				/* }{ */
-
+#[cfg(not(feature = "readline"))]
 fn readline(prompt: &str) -> Option<String> {
     use std::io::{self, Write};
     write!(io::stdout(), "{}", prompt).unwrap();
@@ -76,11 +82,8 @@ fn readline(prompt: &str) -> Option<String> {
         Err(_) => None,
     }
 }
+#[cfg(not(feature = "readline"))]
 fn saveline(_: &str) {}
-
-// #endif				/* } */
-
-// #endif				/* } */
 
 
 
