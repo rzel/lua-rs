@@ -132,25 +132,27 @@ use lua_rs::ffi;
 // }
 
 
-// static void print_usage (const char *badoption) {
-//   lua_writestringerror("%s: ", progname);
-//   if (badoption[1] == 'e' || badoption[1] == 'l')
-//     lua_writestringerror("'%s' needs argument\n", badoption);
-//   else
-//     lua_writestringerror("unrecognized option '%s'\n", badoption);
-//   lua_writestringerror(
-//   "usage: %s [options] [script [args]]\n"
-//   "Available options are:\n"
-//   "  -e stat  execute string 'stat'\n"
-//   "  -i       enter interactive mode after executing 'script'\n"
-//   "  -l name  require library 'name'\n"
-//   "  -v       show version information\n"
-//   "  -E       ignore environment variables\n"
-//   "  --       stop handling options\n"
-//   "  -        stop handling options and execute stdin\n"
-//   ,
-//   progname);
-// }
+fn print_usage(badoption: &str) {
+    use std::io::{self, Write};
+    let progname = std::env::args().next().unwrap();
+    write!(&mut io::stderr(), "{}: ", progname).unwrap();
+    let ch = badoption.chars().nth(1).unwrap();
+    if ch == 'e' || ch == 'l' {
+        writeln!(&mut io::stderr(), "'{}' needs argument", badoption).unwrap();
+    } else {
+        writeln!(&mut io::stderr(), "unrecognized option '{}'", badoption).unwrap();
+    }
+    writeln!(&mut io::stderr(),
+r#"usage: {} [options] [script [args]]
+Available options are:
+  -e stat  execute string 'stat'
+  -i       enter interactive mode after executing 'script'
+  -l name  require library 'name'
+  -v       show version information
+  -E       ignore environment variables
+  --       stop handling options
+  -        stop handling options and execute stdin"#, progname).unwrap();
+}
 
 
 /*
@@ -615,8 +617,8 @@ fn pmain_(l: *mut ffi::lua::lua_State) -> libc::c_int {
     let arg_strs: Vec<_> = args.iter().map(|arg| arg.as_ref()).collect();
     let _ = match collectargs(&arg_strs) {
         Ok(o) => o,
-        Err(_) => {
-//     print_usage(argv[script]);  /* 'script' has index of bad arg. */
+        Err(bad_arg) => {
+            print_usage(bad_arg);
             return 0;
         }
     };
