@@ -630,7 +630,7 @@ fn pmain_(l: *mut ffi::lua::lua_State) -> libc::c_int {
         let noenv = std::ffi::CString::new("LUA_NOENV").unwrap();
         unsafe { ffi::lua::lua_setfield(l, ffi::lua::LUA_REGISTRYINDEX, noenv.as_ptr()); }
     }
-//   luaL_openlibs(L);  /* open standard libraries */
+    unsafe { ffi::lualib::luaL_openlibs(l); }  /* open standard libraries */
 //   createargtable(L, argv, argc, script);  /* create table 'arg' */
 //   if (!(args & has_E)) {  /* no option '-E'? */
 //     if (handle_luainit(L) != LUA_OK)  /* run LUA_INIT */
