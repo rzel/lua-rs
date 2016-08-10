@@ -625,10 +625,11 @@ fn pmain_(l: *mut ffi::lua::lua_State) -> libc::c_int {
     if options.version {  /* option '-v'? */
         print_version();
     }
-//   if (args & has_E) {  /* option '-E'? */
-//     lua_pushboolean(L, 1);  /* signal for libraries to ignore env. vars. */
-//     lua_setfield(L, LUA_REGISTRYINDEX, "LUA_NOENV");
-//   }
+    if options.ignore_env {  /* option '-E'? */
+        unsafe { ffi::lua::lua_pushboolean(l, 1); }  /* signal for libraries to ignore env. vars. */
+        let noenv = std::ffi::CString::new("LUA_NOENV").unwrap();
+        unsafe { ffi::lua::lua_setfield(l, ffi::lua::LUA_REGISTRYINDEX, noenv.as_ptr()); }
+    }
 //   luaL_openlibs(L);  /* open standard libraries */
 //   createargtable(L, argv, argc, script);  /* create table 'arg' */
 //   if (!(args & has_E)) {  /* no option '-E'? */
