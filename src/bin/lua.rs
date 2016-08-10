@@ -88,7 +88,7 @@ fn saveline(_: &str) {}
 
 
 
-// static lua_State *globalL = NULL;
+static mut global_l: *mut ffi::lua::lua_State = 0 as *mut _;
 
 // static const char *progname = LUA_PROGNAME;
 
@@ -96,11 +96,11 @@ fn saveline(_: &str) {}
 /*
 ** Hook set by signal function to stop the interpreter.
 */
-// static void lstop (lua_State *L, lua_Debug *ar) {
-//   (void)ar;  /* unused arg. */
-//   lua_sethook(L, NULL, 0, 0);  /* reset hook */
-//   luaL_error(L, "interrupted!");
-// }
+extern "C" fn stop(l: *mut ffi::lua::lua_State, _: *mut ffi::lua::lua_Debug) {
+    unsafe { ffi::lua::lua_sethook(l, None, 0, 0); }  /* reset hook */
+    let s = std::ffi::CString::new("interrupted!").unwrap();
+    unsafe { ffi::lauxlib::luaL_error(l, s.as_ptr()); }
+}
 
 
 /*
@@ -109,10 +109,13 @@ fn saveline(_: &str) {}
 ** this function only sets a hook that, when called, will stop the
 ** interpreter.
 */
-// static void laction (int i) {
-//   signal(i, SIG_DFL); /* if another SIGINT happens, terminate process */
-//   lua_sethook(globalL, lstop, LUA_MASKCALL | LUA_MASKRET | LUA_MASKCOUNT, 1);
-// }
+extern "C" fn laction(i: libc::c_int) {
+    unsafe {
+        libc::signal(i, libc::SIG_DFL); /* if another SIGINT happens, terminate process */
+        ffi::lua::lua_sethook(global_l, Some(stop),
+            ffi::lua::LUA_MASKCALL | ffi::lua::LUA_MASKRET | ffi::lua::LUA_MASKCOUNT, 1);
+    }
+}
 
 
 fn print_usage(badoption: &str) {
@@ -200,10 +203,10 @@ fn docall(l: *mut ffi::lua::lua_State, narg: libc::c_int, nres: libc::c_int) -> 
     let base = unsafe { ffi::lua::lua_gettop(l) } - narg;  /* function index */
     unsafe { ffi::lua::lua_pushcfunction(l, Some(msghandler)); }  /* push message handler */
     unsafe { ffi::lua::lua_insert(l, base); }  /* put it under function and args */
-//   globalL = L;  /* to be available to 'laction' */
-//   signal(SIGINT, laction);  /* set C-signal handler */
+    unsafe { global_l = l; }  /* to be available to 'laction' */
+    unsafe { libc::signal(libc::SIGINT, laction as libc::sighandler_t); }  /* set C-signal handler */
     let status = unsafe { ffi::lua::lua_pcall(l, narg, nres, base) };
-//   signal(SIGINT, SIG_DFL); /* reset C-signal handler */
+    unsafe { libc::signal(libc::SIGINT, libc::SIG_DFL); } /* reset C-signal handler */
     unsafe { ffi::lua::lua_remove(l, base); }  /* remove message handler from the stack */
     status
 }
