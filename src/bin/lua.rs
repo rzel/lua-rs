@@ -221,10 +221,10 @@ fn report(l: *mut ffi::lua::lua_State, status: libc::c_int, include_name: bool) 
 // }
 
 
-// static void print_version (void) {
-//   lua_writestring(LUA_COPYRIGHT, strlen(LUA_COPYRIGHT));
-//   lua_writeline();
-// }
+fn print_version() {
+    use std::io::{self, Write};
+    writeln!(&mut io::stdout(), "{}", ffi::lua::LUA_COPYRIGHT).unwrap();
+}
 
 
 /*
@@ -615,15 +615,16 @@ fn pmain_(l: *mut ffi::lua::lua_State) -> libc::c_int {
     unsafe { ffi::lauxlib::luaL_checkversion(l); }  /* check that interpreter has correct version */
     let args: Vec<_> = std::env::args().collect();
     let arg_strs: Vec<_> = args.iter().map(|arg| arg.as_ref()).collect();
-    let _ = match collectargs(&arg_strs) {
+    let options = match collectargs(&arg_strs) {
         Ok(o) => o,
         Err(bad_arg) => {
             print_usage(bad_arg);
             return 0;
         }
     };
-//   if (args & has_v)  /* option '-v'? */
-//     print_version();
+    if options.version {  /* option '-v'? */
+        print_version();
+    }
 //   if (args & has_E) {  /* option '-E'? */
 //     lua_pushboolean(L, 1);  /* signal for libraries to ignore env. vars. */
 //     lua_setfield(L, LUA_REGISTRYINDEX, "LUA_NOENV");
