@@ -403,9 +403,9 @@ fn dolibrary(l: *mut ffi::lua::lua_State, name: &str) -> libc::c_int {
 ** the final status of load/call with the resulting function (if any)
 ** in the top of the stack.
 */
-// static int loadline (lua_State *L) {
+fn loadline(l: *mut ffi::lua::lua_State) -> libc::c_int {
 //   int status;
-//   lua_settop(L, 0);
+    unsafe { ffi::lua::lua_settop(l, 0); }
 //   if (!pushline(L, 1))
 //     return -1;  /* no input */
 //   if ((status = addreturn(L)) != LUA_OK)  /* 'return ...' did not work? */
@@ -413,43 +413,44 @@ fn dolibrary(l: *mut ffi::lua::lua_State, name: &str) -> libc::c_int {
 //   lua_remove(L, 1);  /* remove line from the stack */
 //   lua_assert(lua_gettop(L) == 1);
 //   return status;
-// }
+    0
+}
 
 
 /*
 ** Prints (calling the Lua 'print' function) any values on the stack
 */
-// static void l_print (lua_State *L) {
-//   int n = lua_gettop(L);
-//   if (n > 0) {  /* any result to be printed? */
+fn print(l: *mut ffi::lua::lua_State) {
+    let n = unsafe { ffi::lua::lua_gettop(l) };
+    if n > 0 {  /* any result to be printed? */
 //     luaL_checkstack(L, LUA_MINSTACK, "too many results to print");
 //     lua_getglobal(L, "print");
 //     lua_insert(L, 1);
 //     if (lua_pcall(L, n, 0, 0) != LUA_OK)
 //       l_message(progname, lua_pushfstring(L, "error calling 'print' (%s)",
 //                                              lua_tostring(L, -1)));
-//   }
-// }
+    }
+}
 
 
 /*
 ** Do the REPL: repeatedly read (load) a line, evaluate (call) it, and
 ** print any results.
 */
-// static void doREPL (lua_State *L) {
-//   int status;
-//   const char *oldprogname = progname;
-//   progname = NULL;  /* no 'progname' on errors in interactive mode */
-//   while ((status = loadline(L)) != -1) {
-//     if (status == LUA_OK)
-//       status = docall(L, 0, LUA_MULTRET);
-//     if (status == LUA_OK) l_print(L);
-//     else report(L, status);
-//   }
-//   lua_settop(L, 0);  /* clear stack */
-//   lua_writeline();
-//   progname = oldprogname;
-// }
+fn dorepl(l: *mut ffi::lua::lua_State) {
+    loop {
+        let mut status = loadline(l);
+        if status == -1 { break; }
+        if status == ffi::lua::LUA_OK {
+            status = docall(l, 0, ffi::lua::LUA_MULTRET);
+        }
+        if status == ffi::lua::LUA_OK { print(l); }
+        else { report(l, status, false); }  /* no 'progname' on errors in interactive mode */
+    }
+    unsafe { ffi::lua::lua_settop(l, 0); }  /* clear stack */
+    use std::io::{self, Write};
+    writeln!(io::stdout(), "").unwrap();
+}
 
 
 /*
@@ -673,8 +674,9 @@ fn pmain_(l: *mut ffi::lua::lua_State) -> libc::c_int {
             handle_script(l, options.script_args, options.stop_options) != ffi::lua::LUA_OK {
         return 0;
     }
-//   if (args & has_i)  /* -i option? */
-//     doREPL(L);  /* do read-eval-print loop */
+    if options.interactive {  /* -i option? */
+        dorepl(l);  /* do read-eval-print loop */
+    }
 //   else if (script == argc && !(args & (has_e | has_v))) {  /* no arguments? */
 //     if (lua_stdin_is_tty()) {  /* running in interactive mode? */
 //       print_version();
