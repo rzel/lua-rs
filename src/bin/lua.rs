@@ -40,12 +40,9 @@ use lua_rs::ffi;
 // #define LUA_MAXINPUT		512
 // #endif
 
-// #if !defined(LUA_INIT_VAR)
-// #define LUA_INIT_VAR		"LUA_INIT"
-// #endif
+const LUA_INIT_VAR_NAME: &'static str = "=LUA_INIT";
 
-// #define LUA_INITVARVERSION  \
-// 	LUA_INIT_VAR "_" LUA_VERSION_MAJOR "_" LUA_VERSION_MINOR
+const LUA_INITVARVERSION_NAME: &'static str = "=LUA_INIT_5_3";
 
 
 /*
@@ -257,20 +254,29 @@ fn createargtable<'a>(l: *mut ffi::lua::lua_State, options: &ProgramOptions<'a>)
 }
 
 
-// static int dochunk (lua_State *L, int status) {
+fn dochunk(l: *mut ffi::lua::lua_State, status: libc::c_int) -> libc::c_int {
 //   if (status == LUA_OK) status = docall(L, 0, 0);
-//   return report(L, status);
-// }
+    report(l, status, true)
+}
 
 
-// static int dofile (lua_State *L, const char *name) {
-//   return dochunk(L, luaL_loadfile(L, name));
-// }
+fn dofile(l: *mut ffi::lua::lua_State, name: Option<&str>) -> libc::c_int {
+    let status = match name {
+        Some(n) => {
+            let s = std::ffi::CString::new(n).unwrap();
+            unsafe { ffi::lauxlib::luaL_loadfile(l, s.as_ptr()) }
+        }
+        None => unsafe { ffi::lauxlib::luaL_loadfile(l, std::ptr::null()) },
+    };
+    dochunk(l, status)
+}
 
 
-// static int dostring (lua_State *L, const char *s, const char *name) {
-//   return dochunk(L, luaL_loadbuffer(L, s, strlen(s), name));
-// }
+fn dostring(l: *mut ffi::lua::lua_State, s: &str, name: &str) -> libc::c_int {
+    let s = std::ffi::CString::new(s).unwrap();
+    let name = std::ffi::CString::new(name).unwrap();
+    dochunk(l, unsafe { ffi::lauxlib::luaL_loadbuffer(l, s.as_ptr(), s.to_bytes().len(), name.as_ptr()) })
+}
 
 
 /*
@@ -601,19 +607,27 @@ fn collectargs<'a>(args: &'a [&str]) -> Result<ProgramOptions<'a>, &'a str> {
 // }
 
 
-// static int handle_luainit (lua_State *L) {
-//   const char *name = "=" LUA_INITVARVERSION;
-//   const char *init = getenv(name + 1);
-//   if (init == NULL) {
-//     name = "=" LUA_INIT_VAR;
-//     init = getenv(name + 1);  /* try alternative name */
-//   }
-//   if (init == NULL) return LUA_OK;
-//   else if (init[0] == '@')
-//     return dofile(L, init+1);
-//   else
-//     return dostring(L, init, name);
-// }
+fn handle_luainit(l: *mut ffi::lua::lua_State) -> libc::c_int {
+    fn get_var(name: &str) -> Option<(String, &str)> {
+        let mut chars = name.chars();
+        chars.next();  /* skip the '=' to get the key */
+        match std::env::var(chars.as_str()) {
+            Ok(val) => Some((val, name)),
+            Err(_) => None,
+        }
+    }
+    let (init, name) = match get_var(LUA_INITVARVERSION_NAME).or_else(|| get_var(LUA_INIT_VAR_NAME)) {
+        Some((i, n)) => (i, n),
+        None => return ffi::lua::LUA_OK,
+    };
+    if init.starts_with("@") {
+        let mut chars = init.chars();
+        chars.next();  /* skip the '@' to get the key */
+        dofile(l, Some(chars.as_str()))
+    } else {
+        dostring(l, &init, &name)
+    }
+}
 
 
 /*
@@ -641,10 +655,11 @@ fn pmain_(l: *mut ffi::lua::lua_State) -> libc::c_int {
     }
     unsafe { ffi::lualib::luaL_openlibs(l); }  /* open standard libraries */
     createargtable(l, &options);  /* create table 'arg' */
-//   if (!(args & has_E)) {  /* no option '-E'? */
-//     if (handle_luainit(L) != LUA_OK)  /* run LUA_INIT */
-//       return 0;  /* error running LUA_INIT */
-//   }
+    if !options.ignore_env {  /* no option '-E'? */
+        if handle_luainit(l) != ffi::lua::LUA_OK {  /* run LUA_INIT */
+            return 0;  /* error running LUA_INIT */
+        }
+    }
 //   if (!runargs(L, argv, script))  /* execute arguments -e and -l */
 //     return 0;  /* something failed */
 //   if (script < argc &&  /* execute main script (if there is one) */
