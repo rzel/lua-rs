@@ -68,7 +68,7 @@ const LUA_INITVARVERSION_NAME: &'static str = "=LUA_INIT_5_3";
 /*
 ** readline defines how to show a prompt and then read a line from
 ** the standard input.
-** lua_saveline defines how to "save" a read line in a "history".
+** saveline defines how to "save" a read line in a "history".
 */
 // #if !defined(lua_readline)	/* { */
 
@@ -91,7 +91,7 @@ fn readline(prompt: &str) -> Option<String> {
         Err(_) => None,
     }
 }
-// #define lua_saveline(L,line)	{ (void)L; (void)line; }
+fn saveline(_: &str) {}
 
 // #endif				/* } */
 
@@ -362,19 +362,23 @@ fn pushline(l: *mut ffi::lua::lua_State, firstline: bool) -> bool {
 ** Try to compile line on the stack as 'return <line>;'; on return, stack
 ** has either compiled chunk or original line (if compilation failed).
 */
-// static int addreturn (lua_State *L) {
-//   const char *line = lua_tostring(L, -1);  /* original line */
-//   const char *retline = lua_pushfstring(L, "return %s;", line);
-//   int status = luaL_loadbuffer(L, retline, strlen(retline), "=stdin");
-//   if (status == LUA_OK) {
-//     lua_remove(L, -2);  /* remove modified line */
-//     if (line[0] != '\0')  /* non empty? */
-//       lua_saveline(L, line);  /* keep history */
-//   }
-//   else
-//     lua_pop(L, 2);  /* pop result from 'luaL_loadbuffer' and modified line */
-//   return status;
-// }
+fn addreturn(l: *mut ffi::lua::lua_State) -> libc::c_int {
+    let line = unsafe { ffi::lua::lua_tostring(l, -1) };  /* original line */
+    let s = std::ffi::CString::new("return %s;").unwrap();
+    let retline = unsafe { ffi::lua::lua_pushfstring(l, s.as_ptr(), line) };
+    let s = std::ffi::CString::new("=stdin").unwrap();
+    let status = unsafe { ffi::lauxlib::luaL_loadbuffer(l, retline, libc::strlen(retline), s.as_ptr()) };
+    if status == ffi::lua::LUA_OK {
+        unsafe { ffi::lua::lua_remove(l, -2); }  /* remove modified line */
+        let s = unsafe { std::ffi::CStr::from_ptr(line) };
+        if !s.to_bytes().is_empty() {  /* non empty? */
+            saveline(s.to_str().unwrap());  /* keep history */
+        }
+    } else {
+        unsafe { ffi::lua::lua_pop(l, 2); }  /* pop result from 'luaL_loadbuffer' and modified line */
+    }
+    status
+}
 
 
 /*
@@ -403,17 +407,17 @@ fn pushline(l: *mut ffi::lua::lua_State, firstline: bool) -> bool {
 ** in the top of the stack.
 */
 fn loadline(l: *mut ffi::lua::lua_State) -> libc::c_int {
-//   int status;
     unsafe { ffi::lua::lua_settop(l, 0); }
     if !pushline(l, true) {
         return -1;  /* no input */
     }
-//   if ((status = addreturn(L)) != LUA_OK)  /* 'return ...' did not work? */
+    let status = addreturn(l);
+    if status != ffi::lua::LUA_OK {  /* 'return ...' did not work? */
 //     status = multiline(L);  /* try as command, maybe with continuation lines */
-//   lua_remove(L, 1);  /* remove line from the stack */
-//   lua_assert(lua_gettop(L) == 1);
-//   return status;
-    0
+    }
+    unsafe { ffi::lua::lua_remove(l, 1); }  /* remove line from the stack */
+    assert!(unsafe { ffi::lua::lua_gettop(l) } == 1);
+    status
 }
 
 
@@ -423,12 +427,16 @@ fn loadline(l: *mut ffi::lua::lua_State) -> libc::c_int {
 fn print(l: *mut ffi::lua::lua_State) {
     let n = unsafe { ffi::lua::lua_gettop(l) };
     if n > 0 {  /* any result to be printed? */
-//     luaL_checkstack(L, LUA_MINSTACK, "too many results to print");
-//     lua_getglobal(L, "print");
-//     lua_insert(L, 1);
-//     if (lua_pcall(L, n, 0, 0) != LUA_OK)
-//       l_message(progname, lua_pushfstring(L, "error calling 'print' (%s)",
-//                                              lua_tostring(L, -1)));
+        let s = std::ffi::CString::new("too many results to print").unwrap();
+        unsafe { ffi::lauxlib::luaL_checkstack(l, ffi::lua::LUA_MINSTACK, s.as_ptr()); }
+        let s = std::ffi::CString::new("print").unwrap();
+        unsafe { ffi::lua::lua_getglobal(l, s.as_ptr()); }
+        unsafe { ffi::lua::lua_insert(l, 1); }
+        if unsafe { ffi::lua::lua_pcall(l, n, 0, 0) } != ffi::lua::LUA_OK {
+            let s = std::ffi::CString::new("error calling 'print' (%s)").unwrap();
+            let msg = unsafe { ffi::lua::lua_pushfstring(l, s.as_ptr(), ffi::lua::lua_tostring(l, -1)) };
+            message(unsafe { std::ffi::CStr::from_ptr(msg) }.to_str().unwrap(), false);
+        }
     }
 }
 
