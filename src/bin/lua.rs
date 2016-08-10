@@ -185,37 +185,42 @@ fn report(l: *mut ffi::lua::lua_State, status: libc::c_int, include_name: bool) 
 /*
 ** Message handler used to run all chunks
 */
-// static int msghandler (lua_State *L) {
-//   const char *msg = lua_tostring(L, 1);
-//   if (msg == NULL) {  /* is error object not a string? */
-//     if (luaL_callmeta(L, 1, "__tostring") &&  /* does it have a metamethod */
-//         lua_type(L, -1) == LUA_TSTRING)  /* that produces a string? */
-//       return 1;  /* that is the message */
-//     else
-//       msg = lua_pushfstring(L, "(error object is a %s value)",
-//                                luaL_typename(L, 1));
-//   }
-//   luaL_traceback(L, L, msg, 1);  /* append a standard traceback */
-//   return 1;  /* return the traceback */
-// }
+fn msghandler_(l: *mut ffi::lua::lua_State) -> libc::c_int {
+    let mut msg = unsafe { ffi::lua::lua_tostring(l, 1) };
+    if msg.is_null() {  /* is error object not a string? */
+        let s = std::ffi::CString::new("__tostring").unwrap();
+        if unsafe { ffi::lauxlib::luaL_callmeta(l, 1, s.as_ptr()) } != 0 &&  /* does it have a metamethod */
+                unsafe { ffi::lua::lua_type(l, -1) } == ffi::lua::LUA_TSTRING {  /* that produces a string? */
+            return 1;  /* that is the message */
+        } else {
+            let s = std::ffi::CString::new("(error object is a %s value)").unwrap();
+            msg = unsafe { ffi::lua::lua_pushfstring(l, s.as_ptr(), ffi::lauxlib::luaL_typename(l, 1)) };
+        }
+    }
+    unsafe { ffi::lauxlib::luaL_traceback(l, l, msg, 1); }  /* append a standard traceback */
+    1  /* return the traceback */
+}
+
+unsafe extern "C" fn msghandler(l: *mut ffi::lua::lua_State) -> libc::c_int {
+    msghandler_(l)
+}
 
 
 /*
 ** Interface to 'lua_pcall', which sets appropriate message function
 ** and C-signal handler. Used to run all chunks.
 */
-// static int docall (lua_State *L, int narg, int nres) {
-//   int status;
-//   int base = lua_gettop(L) - narg;  /* function index */
-//   lua_pushcfunction(L, msghandler);  /* push message handler */
-//   lua_insert(L, base);  /* put it under function and args */
+fn docall(l: *mut ffi::lua::lua_State, narg: libc::c_int, nres: libc::c_int) -> libc::c_int {
+    let base = unsafe { ffi::lua::lua_gettop(l) } - narg;  /* function index */
+    unsafe { ffi::lua::lua_pushcfunction(l, Some(msghandler)); }  /* push message handler */
+    unsafe { ffi::lua::lua_insert(l, base); }  /* put it under function and args */
 //   globalL = L;  /* to be available to 'laction' */
 //   signal(SIGINT, laction);  /* set C-signal handler */
-//   status = lua_pcall(L, narg, nres, base);
+    let status = unsafe { ffi::lua::lua_pcall(l, narg, nres, base) };
 //   signal(SIGINT, SIG_DFL); /* reset C-signal handler */
-//   lua_remove(L, base);  /* remove message handler from the stack */
-//   return status;
-// }
+    unsafe { ffi::lua::lua_remove(l, base); }  /* remove message handler from the stack */
+    status
+}
 
 
 fn print_version() {
@@ -255,7 +260,7 @@ fn createargtable<'a>(l: *mut ffi::lua::lua_State, options: &ProgramOptions<'a>)
 
 
 fn dochunk(l: *mut ffi::lua::lua_State, status: libc::c_int) -> libc::c_int {
-//   if (status == LUA_OK) status = docall(L, 0, 0);
+    let status = if status == ffi::lua::LUA_OK { docall(l, 0, 0) } else { status };
     report(l, status, true)
 }
 
