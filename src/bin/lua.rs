@@ -288,15 +288,17 @@ fn dostring(l: *mut ffi::lua::lua_State, s: &str, name: &str) -> libc::c_int {
 ** Calls 'require(name)' and stores the result in a global variable
 ** with the given name.
 */
-// static int dolibrary (lua_State *L, const char *name) {
-//   int status;
-//   lua_getglobal(L, "require");
-//   lua_pushstring(L, name);
-//   status = docall(L, 1, 1);  /* call 'require(name)' */
-//   if (status == LUA_OK)
-//     lua_setglobal(L, name);  /* global[name] = require return */
-//   return report(L, status);
-// }
+fn dolibrary(l: *mut ffi::lua::lua_State, name: &str) -> libc::c_int {
+    let require = std::ffi::CString::new("require").unwrap();
+    unsafe { ffi::lua::lua_getglobal(l, require.as_ptr()); }
+    let name = std::ffi::CString::new(name).unwrap();
+    unsafe { ffi::lua::lua_pushstring(l, name.as_ptr()); }
+    let status = docall(l, 1, 1);  /* call 'require(name)' */
+    if status == ffi::lua::LUA_OK {
+        unsafe { ffi::lua::lua_setglobal(l, name.as_ptr()); }  /* global[name] = require return */
+    }
+    report(l, status, true)
+}
 
 
 /*
@@ -592,24 +594,17 @@ fn collectargs<'a>(args: &'a [&str]) -> Result<ProgramOptions<'a>, &'a str> {
 ** Processes options 'e' and 'l', which involve running Lua code.
 ** Returns 0 if some code raises an error.
 */
-// static int runargs (lua_State *L, char **argv, int n) {
-//   int i;
-//   for (i = 1; i < n; i++) {
-//     int option = argv[i][1];
-//     lua_assert(argv[i][0] == '-');  /* already checked */
-//     if (option == 'e' || option == 'l') {
-//       int status;
-//       const char *extra = argv[i] + 2;  /* both options need an argument */
-//       if (*extra == '\0') extra = argv[++i];
-//       lua_assert(extra != NULL);
-//       status = (option == 'e')
-//                ? dostring(L, extra, "=(command line)")
-//                : dolibrary(L, extra);
-//       if (status != LUA_OK) return 0;
-//     }
-//   }
-//   return 1;
-// }
+fn runargs<'a>(l: *mut ffi::lua::lua_State, runnable_args: &[RunnableArg<'a>]) -> bool {
+    use RunnableArg::{Library, Execute};
+    for arg in runnable_args {
+        let status = match arg {
+            &Library(s) => dolibrary(l, s),
+            &Execute(s) => dostring(l, s, "=(command line)"),
+        };
+        if status != ffi::lua::LUA_OK { return false; }
+    }
+    true
+}
 
 
 fn handle_luainit(l: *mut ffi::lua::lua_State) -> libc::c_int {
@@ -665,8 +660,9 @@ fn pmain_(l: *mut ffi::lua::lua_State) -> libc::c_int {
             return 0;  /* error running LUA_INIT */
         }
     }
-//   if (!runargs(L, argv, script))  /* execute arguments -e and -l */
-//     return 0;  /* something failed */
+    if !runargs(l, &options.runnable_args) {  /* execute arguments -e and -l */
+      return 0;  /* something failed */
+    }
 //   if (script < argc &&  /* execute main script (if there is one) */
 //       handle_script(L, argv + script) != LUA_OK)
 //     return 0;
