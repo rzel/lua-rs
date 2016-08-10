@@ -229,23 +229,32 @@ fn print_version() {
 
 /*
 ** Create the 'arg' table, which stores all arguments from the
-** command line ('argv'). It should be aligned so that, at index 0,
-** it has 'argv[script]', which is the script name. The arguments
-** to the script (everything after 'script') go to positive indices;
-** other arguments (before the script name) go to negative indices.
+** command line ('options'). It should be aligned so that, at index 0,
+** it has 'script_args[0]', which is the script name. The arguments
+** to the script (everything after 'script_args[0]') go to positive indices;
+** other arguments (pre_script_args) go to negative indices.
 ** If there is no script name, assume interpreter's name as base.
 */
-// static void createargtable (lua_State *L, char **argv, int argc, int script) {
-//   int i, narg;
-//   if (script == argc) script = 0;  /* no script name? */
-//   narg = argc - (script + 1);  /* number of positive indices */
-//   lua_createtable(L, narg, script + 1);
-//   for (i = 0; i < argc; i++) {
-//     lua_pushstring(L, argv[i]);
-//     lua_rawseti(L, -2, i - script);
-//   }
-//   lua_setglobal(L, "arg");
-// }
+fn createargtable<'a>(l: *mut ffi::lua::lua_State, options: &ProgramOptions<'a>) {
+    let (pre, post) = if options.script_args.len() == 0 {  /* no script name? */
+        (options.script_args, options.pre_script_args)
+    } else {
+        (options.pre_script_args, options.script_args)
+    };
+    unsafe { ffi::lua::lua_createtable(l, post.len() as i32, (pre.len() + 1) as i32); }
+    for (i, arg) in pre.iter().enumerate() {
+        let s = std::ffi::CString::new(*arg).unwrap();
+        unsafe { ffi::lua::lua_pushstring(l, s.as_ptr()); }
+        unsafe { ffi::lua::lua_rawseti(l, -2, i as i64 - pre.len() as i64); }
+    }
+    for (i, arg) in post.iter().enumerate() {
+        let s = std::ffi::CString::new(*arg).unwrap();
+        unsafe { ffi::lua::lua_pushstring(l, s.as_ptr()); }
+        unsafe { ffi::lua::lua_rawseti(l, -2, i as i64); }
+    }
+    let s = std::ffi::CString::new("arg").unwrap();
+    unsafe { ffi::lua::lua_setglobal(l, s.as_ptr()); }
+}
 
 
 // static int dochunk (lua_State *L, int status) {
@@ -631,7 +640,7 @@ fn pmain_(l: *mut ffi::lua::lua_State) -> libc::c_int {
         unsafe { ffi::lua::lua_setfield(l, ffi::lua::LUA_REGISTRYINDEX, noenv.as_ptr()); }
     }
     unsafe { ffi::lualib::luaL_openlibs(l); }  /* open standard libraries */
-//   createargtable(L, argv, argc, script);  /* create table 'arg' */
+    createargtable(l, &options);  /* create table 'arg' */
 //   if (!(args & has_E)) {  /* no option '-E'? */
 //     if (handle_luainit(L) != LUA_OK)  /* run LUA_INIT */
 //       return 0;  /* error running LUA_INIT */
