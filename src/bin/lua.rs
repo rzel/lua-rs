@@ -455,31 +455,37 @@ fn dolibrary(l: *mut ffi::lua::lua_State, name: &str) -> libc::c_int {
 /*
 ** Push on the stack the contents of table 'arg' from 1 to #arg
 */
-// static int pushargs (lua_State *L) {
-//   int i, n;
-//   if (lua_getglobal(L, "arg") != LUA_TTABLE)
-//     luaL_error(L, "'arg' is not a table");
-//   n = (int)luaL_len(L, -1);
-//   luaL_checkstack(L, n + 3, "too many arguments to script");
-//   for (i = 1; i <= n; i++)
-//     lua_rawgeti(L, -i, i);
-//   lua_remove(L, -i);  /* remove table from the stack */
-//   return n;
-// }
+fn pushargs(l: *mut ffi::lua::lua_State) -> libc::c_int {
+    let arg = std::ffi::CString::new("arg").unwrap();
+    if unsafe { ffi::lua::lua_getglobal(l, arg.as_ptr()) } != ffi::lua::LUA_TTABLE {
+        let s = std::ffi::CString::new("'arg' is not a table").unwrap();
+        unsafe { ffi::lauxlib::luaL_error(l, s.as_ptr()); }
+    }
+    let n = unsafe { ffi::lauxlib::luaL_len(l, -1) } as i32;
+    let s = std::ffi::CString::new("too many arguments to script").unwrap();
+    unsafe { ffi::lauxlib::luaL_checkstack(l, n + 3, s.as_ptr()); }
+    for i in 1..(n + 1) {
+        unsafe { ffi::lua::lua_rawgeti(l, -i, i as i64); }
+    }
+    unsafe { ffi::lua::lua_remove(l, -(n + 1)); }  /* remove table from the stack */
+    n
+}
 
 
-// static int handle_script (lua_State *L, char **argv) {
-//   int status;
-//   const char *fname = argv[0];
-//   if (strcmp(fname, "-") == 0 && strcmp(argv[-1], "--") != 0)
-//     fname = NULL;  /* stdin */
-//   status = luaL_loadfile(L, fname);
-//   if (status == LUA_OK) {
-//     int n = pushargs(L);  /* push arguments to script */
-//     status = docall(L, n, LUA_MULTRET);
-//   }
-//   return report(L, status);
-// }
+fn handle_script(l: *mut ffi::lua::lua_State, args: &[&str], stop_options: bool) -> libc::c_int {
+    let s = std::ffi::CString::new(args[0]).unwrap();
+    let fname = if args[0] == "-" && !stop_options {
+        std::ptr::null()  /* stdin */
+    } else {
+        s.as_ptr()
+    };
+    let mut status = unsafe { ffi::lauxlib::luaL_loadfile(l, fname) };
+    if status == ffi::lua::LUA_OK {
+        let n = pushargs(l);  /* push arguments to script */
+        status = docall(l, n, ffi::lua::LUA_MULTRET);
+    }
+    report(l, status, true)
+}
 
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug)]
@@ -663,9 +669,10 @@ fn pmain_(l: *mut ffi::lua::lua_State) -> libc::c_int {
     if !runargs(l, &options.runnable_args) {  /* execute arguments -e and -l */
       return 0;  /* something failed */
     }
-//   if (script < argc &&  /* execute main script (if there is one) */
-//       handle_script(L, argv + script) != LUA_OK)
-//     return 0;
+    if options.script_args.len() != 0 &&  /* execute main script (if there is one) */
+            handle_script(l, options.script_args, options.stop_options) != ffi::lua::LUA_OK {
+        return 0;
+    }
 //   if (args & has_i)  /* -i option? */
 //     doREPL(L);  /* do read-eval-print loop */
 //   else if (script == argc && !(args & (has_e | has_v))) {  /* no arguments? */
